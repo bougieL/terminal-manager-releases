@@ -107,12 +107,27 @@ jobs:
         working-directory: source
         run: pnpm run build:win
 
+      # electron-builder ships its own fpm binary, but fpm shells out to
+      # the distro's rpmbuild to write the .rpm, and the rpm payload is
+      # xz-compressed — both come from apt. The runner image may or may
+      # not have them; install explicitly so the rpm build can't fail on
+      # a missing tool.
+      - name: Install rpm build toolchain
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm xz-utils
+
+      # The target list is spelled out instead of relying on the config's
+      # linux.target: CLI targets REPLACE the config list, so the rpm is
+      # produced for every tag — tags cut before rpm was added to
+      # electron-builder.yml only know AppImage + deb.
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-24.04'
         working-directory: source
         run: |
           pnpm run build
-          pnpm exec electron-builder --linux --publish never
+          pnpm exec electron-builder --linux AppImage deb rpm --publish never
 
       - name: Repack deb
         if: matrix.os == 'ubuntu-24.04'
@@ -135,7 +150,7 @@ jobs:
           cd source
           FILES=(
             dist/*.exe dist/*.zip dist/*.dmg dist/*.AppImage
-            dist/*.snap dist/*.deb dist/*.yml dist/*.blockmap
+            dist/*.snap dist/*.deb dist/*.rpm dist/*.yml dist/*.blockmap
           )
           if [ ${#FILES[@]} -eq 0 ]; then
             echo "No release artifacts found; skipping upload."
